@@ -3,6 +3,7 @@
 
     var serverOffset = 0;
     var lastPlannedFireTime = null; // 計劃發射 server time
+    var countdownTimer = null;
 
     // --- 1. LOG 面板 ---
     var logPanel = document.createElement('div');
@@ -15,10 +16,10 @@
         var line = document.createElement('div');
         var color = '#fff';
         if(type === 'SUCCESS') color = '#00ff88';
-        if(type === 'INFO') color = '#00d0ff';
+        if(type === 'INFO')    color = '#00d0ff';
         if(type === 'WARNING') color = '#ffcc00';
-        if(type === 'ERROR') color = '#ff4444';
-        if(type === 'GUARD') color = '#00bfff';
+        if(type === 'ERROR')   color = '#ff4444';
+        if(type === 'GUARD')   color = '#00bfff';
 
         var nowForLog = new Date(Date.now() + serverOffset);
         var time = nowForLog.toLocaleTimeString('en-GB') + '.' + String(nowForLog.getMilliseconds()).padStart(3,'0');
@@ -36,7 +37,7 @@
         fetch(window.location.href, { method: 'HEAD' })
             .then(function(r) {
                 if(r.ok) log('GUARD', '保活成功 (Session Active)');
-                else log('WARNING', '保活異常 Status: ' + r.status);
+                else     log('WARNING', '保活異常 Status: ' + r.status);
             })
             .catch(function(e) { log('ERROR', '保活網絡錯誤: ' + e); });
     }, 240000);
@@ -49,7 +50,7 @@
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
             <span>P-Bandai Sniper V7.3</span>\
-            <span style="cursor:pointer;color:#999" onclick="document.getElementById(\'pbs-main-panel\').remove();document.getElementById(\'pbs-log-panel\').style.display=\'none\';">✕</span>\
+            <span style="cursor:pointer;color:#999" onclick="document.getElementById(\\\'pbs-main-panel\\\').remove();document.getElementById(\\\'pbs-log-panel\\\').style.display=\\\'none\\\';">✕</span>\
         </h3>\
         <div style="margin-bottom:8px">\
             <label style="display:block;color:#ccc;font-size:11px">⏰ Time (HH:MM:SS)</label>\
@@ -75,13 +76,13 @@
     ';
     document.body.appendChild(panel);
 
-    var timeInput  = document.getElementById('pbs-time');
-    var qtyInput   = document.getElementById('pbs-qty');
-    var offsetInput= document.getElementById('pbs-offset');
-    var fetchInput = document.getElementById('pbs-fetch');
-    var btn        = document.getElementById('pbs-btn');
-    var status     = document.getElementById('pbs-status');
-    var cdLabel    = document.getElementById('pbs-countdown');
+    var timeInput   = document.getElementById('pbs-time');
+    var qtyInput    = document.getElementById('pbs-qty');
+    var offsetInput = document.getElementById('pbs-offset');
+    var fetchInput  = document.getElementById('pbs-fetch');
+    var btn         = document.getElementById('pbs-btn');
+    var status      = document.getElementById('pbs-status');
+    var cdLabel     = document.getElementById('pbs-countdown');
 
     // --- Sync 按鈕 ---
     (function(){
@@ -124,7 +125,7 @@
         };
     })();
 
-    // --- 4. 自動抓 Product ID (保持原 7.2 寫法) ---
+    // --- 自動抓 Product ID (原 7.2 寫法) ---
     var pid = null;
     try {
         var scripts = [].slice.call(document.querySelectorAll('script'));
@@ -149,40 +150,7 @@
 
     if(!pid) log('WARNING', '未找到商品 ID，請確認在商品詳情頁');
 
-    // --- Retry 發射 + Latency ---
-    function fireWithRetry(url, config, maxRetries, attempt, firstFireTime) {
-        attempt = attempt || 1;
-        if (!firstFireTime) firstFireTime = Date.now() + serverOffset; // server time basis
-
-        log('INFO', '發送購買請求... (Attempt ' + attempt + '/' + maxRetries + ')');
-
-        var sendTime = Date.now() + serverOffset;
-
-        return fetch(url, config).then(function(r){
-            var receiveTime = Date.now() + serverOffset;
-            var latency = receiveTime - sendTime;
-
-            // 記錄實際發射同 latency
-            var fireDate = new Date(sendTime);
-            var fireStr = fireDate.toTimeString().split(' ')[0] + '.' + String(fireDate.getMilliseconds()).padStart(3,'0');
-            log('INFO', '實際發射 ServerTime: ' + fireStr + ' (latency: ' + latency + 'ms)');
-
-            if(!r.ok && r.status >= 500 && attempt < maxRetries){
-                log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
-                return new Promise(function(res){
-                    setTimeout(res, 300);
-                }).then(function(){
-                    return fireWithRetry(url, config, maxRetries, attempt+1, firstFireTime);
-                });
-            }
-
-            log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
-            return r.text();
-        });
-    }
-
     // --- 倒數計時顯示 ---
-    var countdownTimer = null;
     function startCountdown(targetTimeMs) {
         if (countdownTimer) clearInterval(countdownTimer);
         countdownTimer = setInterval(function(){
@@ -199,23 +167,54 @@
         }, 100);
     }
 
-    // --- 5. 綁定 Start ---
+    // --- Retry 發射 + latency log ---
+    function fireWithRetry(url, config, maxRetries, attempt) {
+        attempt = attempt || 1;
+
+        log('INFO', '發送購買請求... (Attempt ' + attempt + '/' + maxRetries + ')');
+
+        var sendTime = Date.now() + serverOffset;
+
+        return fetch(url, config).then(function(r){
+            var receiveTime = Date.now() + serverOffset;
+            var latency = receiveTime - sendTime;
+
+            var fireDate = new Date(sendTime);
+            var fireStr = fireDate.toTimeString().split(' ')[0] + '.' + String(fireDate.getMilliseconds()).padStart(3,'0');
+            log('INFO', '實際發射 ServerTime: ' + fireStr + ' (latency: ' + latency + 'ms)');
+
+            if(!r.ok && r.status >= 500 && attempt < maxRetries){
+                log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
+                return new Promise(function(res){
+                    setTimeout(res, 300);
+                }).then(function(){
+                    return fireWithRetry(url, config, maxRetries, attempt+1);
+                });
+            }
+
+            log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
+            return r.text();
+        });
+    }
+
+    // --- Start 按鈕 ---
     btn.onclick = function() {
         var timeStr   = timeInput.value;
-        var qty       = parseInt(qtyInput.value)   || 1;
-        var offset    = parseInt(offsetInput.value)|| 0;
+        var qty       = parseInt(qtyInput.value)    || 1;
+        var offset    = parseInt(offsetInput.value) || 0;
         var fetchCode = fetchInput.value;
 
-        if (!pid)      { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
-        if (!fetchCode){ log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
+        if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
+        if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
-        var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\\S]*})\)/);
+        // 修正好 regex：[\s\S]
+        var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
         if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
-        
+
         var url = match[2];
         var configStr = match[3];
         var config;
-        try { config = new Function('return ' + configStr)(); } 
+        try { config = new Function('return ' + configStr)(); }
         catch(e) { log('ERROR', 'Fetch Config 解析失敗'); return; }
 
         config.body = JSON.stringify([{ areaItemNo: pid, qty: qty }]);
@@ -227,7 +226,7 @@
         target.setHours(t[0], t[1], t[2], 0);
         var delay = target.getTime() - now.getTime() + offset;
 
-        lastPlannedFireTime = target.getTime() + offset; // server time ms
+        lastPlannedFireTime = target.getTime() + offset;
 
         btn.disabled = true;
         btn.style.opacity = '0.5';
@@ -240,13 +239,11 @@
             log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發送請求 (Offset: ' + offset + 'ms | ServerOffset: ' + serverOffset + 'ms)');
         }
 
-        // 開始倒數顯示
         startCountdown(lastPlannedFireTime);
 
         setTimeout(function() {
             fireWithRetry(url, config, 5)
                 .then(function(txt){
-                    // 更聰明嘅錯誤 parse
                     var parsed = null;
                     try { parsed = JSON.parse(txt); } catch(_) {}
 
