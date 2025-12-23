@@ -4,7 +4,6 @@
     var serverOffset = 0;
     var lastPlannedFireTime = null;
     var countdownTimer = null;
-    var suspendedRetryEnabled = true; // UI toggle 用
 
     // --- 1. LOG 面板 ---
     var logPanel = document.createElement('div');
@@ -68,19 +67,12 @@
                 <input id="pbs-offset" type="number" value="0" placeholder="+/-" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
             </div>\
         </div>\
-        <div style="margin-bottom:6px;display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;">\
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">\
-                <input id="pbs-sus-toggle" type="checkbox" checked style="margin:0;">\
-                <span>Suspended Retry</span>\
-            </label>\
-        </div>\
         <div style="margin-bottom:10px">\
             <label style="display:block;color:#ccc;font-size:11px">📋 Paste Fetch</label>\
             <textarea id="pbs-fetch" rows="3" style="width:100%;padding:5px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;resize:vertical;box-sizing:border-box;" placeholder="fetch(...)"></textarea>\
         </div>\
         <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">🚀 Start</button>\
         <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
-        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1</div>\
     ';
     document.body.appendChild(panel);
 
@@ -91,14 +83,6 @@
     var btn         = document.getElementById('pbs-btn');
     var status      = document.getElementById('pbs-status');
     var cdLabel     = document.getElementById('pbs-countdown');
-    var susToggle   = document.getElementById('pbs-sus-toggle');
-
-    if (susToggle) {
-        susToggle.onchange = function () {
-            suspendedRetryEnabled = !!susToggle.checked;
-            log('INFO', 'Suspended Retry 已' + (suspendedRetryEnabled ? '啟用' : '關閉'));
-        };
-    }
 
     // --- Sync 按鈕 ---
     (function(){
@@ -141,7 +125,7 @@
         };
     })();
 
-    // --- 自動抓 Product ID ---
+    // --- 自動抓 Product ID (原 7.2 寫法) ---
     var pid = null;
     try {
         var scripts = [].slice.call(document.querySelectorAll('script'));
@@ -183,12 +167,12 @@
         }, 100);
     }
 
-    // --- Retry 發射 + latency + SuspendedItem retry（可關） ---
+    // --- Retry 發射 + latency log + SuspendedItem retry ---
     function fireWithRetry(url, config, max5xxRetries, attempt5xx, suspendedRetriesLeft) {
         attempt5xx = attempt5xx || 1;
-        if (suspendedRetriesLeft == null) suspendedRetriesLeft = 3;
+        if (suspendedRetriesLeft == null) suspendedRetriesLeft = 3; // 只比 3 次 Suspended 追加 retry
 
-        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SuspendedLeft ' + suspendedRetriesLeft + ', SusRetry ' + (suspendedRetryEnabled?'ON':'OFF') + ')');
+        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SuspendedLeft ' + suspendedRetriesLeft + ')');
 
         var sendTime = Date.now() + serverOffset;
 
@@ -204,7 +188,7 @@
                 var parsed = null;
                 try { parsed = JSON.parse(txt); } catch(_) {}
 
-                // 5xx → 固定 retry
+                // 5xx → 照舊用 5 次 retry
                 if(r.status >= 500 && !r.ok && attempt5xx < max5xxRetries){
                     log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
                     return new Promise(function(res){
@@ -214,14 +198,8 @@
                     });
                 }
 
-                // 400 + SuspendedItem → 視乎 toggle 再補射
-                if(
-                    suspendedRetryEnabled &&
-                    r.status === 400 &&
-                    parsed && parsed.error &&
-                    parsed.error.indexOf('CouldNotAddToCartBySuspendedItem') !== -1 &&
-                    suspendedRetriesLeft > 0
-                ){
+                // 400 + SuspendedItem → 額外 2–3 次 retry，每次 350ms
+                if(r.status === 400 && parsed && parsed.error && parsed.error.indexOf('CouldNotAddToCartBySuspendedItem') !== -1 && suspendedRetriesLeft > 0){
                     log('WARNING', '商品狀態 Suspended，嘗試再補射一次 (剩餘 ' + (suspendedRetriesLeft-1) + ' 次)...');
                     return new Promise(function(res){
                         setTimeout(res, 350);
@@ -230,6 +208,7 @@
                     });
                 }
 
+                // 正常記錄 HTTP 狀態
                 log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
                 return txt;
             });
