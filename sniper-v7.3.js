@@ -80,7 +80,7 @@
         </div>\
         <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;text-align:center;">🚀 Start</button>\
         <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
-        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1 · by Industrial Revolution & Doro Army</div>\
+        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1 · by Industrial Revolution + Doro Army</div>\
     ';
     document.body.appendChild(panel);
 
