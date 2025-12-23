@@ -49,7 +49,7 @@
 
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
-            <span>P-Bandai Sniper V7.3</span>\
+            <span>P-Bandai Sniper V7.3.1</span>\
             <span style="cursor:pointer;color:#999" onclick="document.getElementById(\\\'pbs-main-panel\\\').remove();document.getElementById(\\\'pbs-log-panel\\\').style.display=\\\'none\\\';">✕</span>\
         </h3>\
         <div style="margin-bottom:8px">\
@@ -167,11 +167,12 @@
         }, 100);
     }
 
-    // --- Retry 發射 + latency log ---
-    function fireWithRetry(url, config, maxRetries, attempt) {
-        attempt = attempt || 1;
+    // --- Retry 發射 + latency log + SuspendedItem retry ---
+    function fireWithRetry(url, config, max5xxRetries, attempt5xx, suspendedRetriesLeft) {
+        attempt5xx = attempt5xx || 1;
+        if (suspendedRetriesLeft == null) suspendedRetriesLeft = 3; // 只比 3 次 Suspended 追加 retry
 
-        log('INFO', '發送購買請求... (Attempt ' + attempt + '/' + maxRetries + ')');
+        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SuspendedLeft ' + suspendedRetriesLeft + ')');
 
         var sendTime = Date.now() + serverOffset;
 
@@ -183,17 +184,34 @@
             var fireStr = fireDate.toTimeString().split(' ')[0] + '.' + String(fireDate.getMilliseconds()).padStart(3,'0');
             log('INFO', '實際發射 ServerTime: ' + fireStr + ' (latency: ' + latency + 'ms)');
 
-            if(!r.ok && r.status >= 500 && attempt < maxRetries){
-                log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
-                return new Promise(function(res){
-                    setTimeout(res, 300);
-                }).then(function(){
-                    return fireWithRetry(url, config, maxRetries, attempt+1);
-                });
-            }
+            return r.text().then(function(txt){
+                var parsed = null;
+                try { parsed = JSON.parse(txt); } catch(_) {}
 
-            log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
-            return r.text();
+                // 5xx → 照舊用 5 次 retry
+                if(r.status >= 500 && !r.ok && attempt5xx < max5xxRetries){
+                    log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
+                    return new Promise(function(res){
+                        setTimeout(res, 300);
+                    }).then(function(){
+                        return fireWithRetry(url, config, max5xxRetries, attempt5xx+1, suspendedRetriesLeft);
+                    });
+                }
+
+                // 400 + SuspendedItem → 額外 2–3 次 retry，每次 350ms
+                if(r.status === 400 && parsed && parsed.error && parsed.error.indexOf('CouldNotAddToCartBySuspendedItem') !== -1 && suspendedRetriesLeft > 0){
+                    log('WARNING', '商品狀態 Suspended，嘗試再補射一次 (剩餘 ' + (suspendedRetriesLeft-1) + ' 次)...');
+                    return new Promise(function(res){
+                        setTimeout(res, 350);
+                    }).then(function(){
+                        return fireWithRetry(url, config, max5xxRetries, attempt5xx, suspendedRetriesLeft-1);
+                    });
+                }
+
+                // 正常記錄 HTTP 狀態
+                log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
+                return txt;
+            });
         });
     }
 
@@ -254,6 +272,8 @@
                         log('WARNING', '商品已售罄 (productOutOfStock=true)');
                     } else if(parsed && parsed.error && parsed.error.indexOf('OutOfStock') !== -1){
                         log('WARNING', '商品已售罄 (error=' + parsed.error + ')');
+                    } else if(parsed && parsed.error && parsed.error.indexOf('SuspendedItem') !== -1){
+                        log('WARNING', '商品狀態仍為 Suspended (error=' + parsed.error + ')');
                     } else if(txt){
                         log('WARNING', '回應異常: ' + txt.slice(0, 120));
                     } else {
