@@ -78,9 +78,9 @@
             <label style="display:block;color:#ccc;font-size:11px">📋 Paste Fetch</label>\
             <textarea id="pbs-fetch" rows="3" style="width:100%;padding:5px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;resize:vertical;box-sizing:border-box;" placeholder="fetch(...)"></textarea>\
         </div>\
-        <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;text-align:center;">🚀 Start</button>\
+        <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">🚀 Start</button>\
         <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
-        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1 · by Industrial Revolution</div>\
+        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1</div>\
     ';
     document.body.appendChild(panel);
 
