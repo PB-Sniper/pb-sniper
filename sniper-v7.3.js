@@ -1,11 +1,8 @@
 (function(){
-    /* 防止重複執行 */
     if(document.getElementById('pbs-main-panel')) return;
 
-    // 新增：Server 時間 offset
     var serverOffset = 0;
 
-    /* --- 1. 建立 LOG 面板 --- */
     var logPanel = document.createElement('div');
     logPanel.id = 'pbs-log-panel';
     logPanel.style.cssText = 'position:fixed;bottom:20px;left:20px;width:380px;height:240px;overflow-y:auto;background:rgba(0,0,0,0.9);color:#fff;font-family:Consolas,monospace;font-size:12px;padding:10px;border:1px solid #555;border-radius:6px;z-index:999999;white-space:pre-wrap;box-shadow:0 4px 10px rgba(0,0,0,0.5);display:none;';
@@ -19,9 +16,8 @@
         if(type === 'INFO') color = '#00d0ff';
         if(type === 'WARNING') color = '#ffcc00';
         if(type === 'ERROR') color = '#ff4444';
-        if(type === 'GUARD') color = '#00bfff'; /* Guardian 專用色 */
+        if(type === 'GUARD') color = '#00bfff';
 
-        // 用 serverOffset 調整時間
         var nowForLog = new Date(Date.now() + serverOffset);
         var time = nowForLog.toLocaleTimeString('en-GB') + '.' + String(nowForLog.getMilliseconds()).padStart(3,'0');
         line.style.color = color;
@@ -32,7 +28,6 @@
         logPanel.scrollTop = logPanel.scrollHeight;
     }
 
-    /* --- 2. Session Guardian V3.0 (整合版) --- */
     log('GUARD', 'Session Guardian V3.0 已啟動 (每4分鐘保活)');
     setInterval(function() {
         fetch(window.location.href, { method: 'HEAD' })
@@ -41,13 +36,12 @@
                 else log('WARNING', '保活異常 Status: ' + r.status);
             })
             .catch(function(e) { log('ERROR', '保活網絡錯誤: ' + e); });
-    }, 240000); /* 4分鐘 */
+    }, 240000);
 
-    /* --- 3. 建立 SNIPER 控制面板 --- */
     var panel = document.createElement('div');
     panel.id = 'pbs-main-panel';
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
-    
+
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
             <span>🎯 P-Bandai Sniper V7.3 Sync</span>\
@@ -76,7 +70,6 @@
     ';
     document.body.appendChild(panel);
 
-    // 3.1 動態加 Sync 按鈕
     (function(){
         var timeInput = document.getElementById('pbs-time');
         if (!timeInput) return;
@@ -91,7 +84,6 @@
         syncBtn.style.border = 'none';
         syncBtn.style.borderRadius = '4px';
         syncBtn.style.cursor = 'pointer';
-        // 擺喺時間 input 下面
         timeInput.parentNode.appendChild(syncBtn);
 
         syncBtn.onclick = function () {
@@ -119,10 +111,9 @@
         };
     })();
 
-    /* --- 4. 自動抓取 Product ID --- */
     var pid = null;
     try {
-        var scripts = [...document.querySelectorAll('script')];
+        var scripts = [].slice.call(document.querySelectorAll('script'));
         for (var i = 0; i < scripts.length; i++) {
             if (scripts[i].textContent.includes('PRELOAD_DATA =')) {
                 var jsonMatch = scripts[i].textContent.match(/PRELOAD_DATA\s*=\s*({.*?})\s*$/m);
@@ -144,7 +135,24 @@
 
     if(!pid) log('WARNING', '未找到商品 ID，請確認在商品詳情頁');
 
-    /* --- 5. 綁定按鈕事件 --- */
+    // --- 新增：帶 retry 嘅發射函數 ---
+    function fireWithRetry(url, config, maxRetries, attempt) {
+        attempt = attempt || 1;
+        log('INFO', '發送購買請求... (Attempt ' + attempt + '/' + maxRetries + ')');
+        return fetch(url, config).then(function(r){
+            if(!r.ok && r.status >= 500 && attempt < maxRetries){
+                log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
+                return new Promise(function(res){
+                    setTimeout(res, 300); // 固定 300ms 間隔
+                }).then(function(){
+                    return fireWithRetry(url, config, maxRetries, attempt+1);
+                });
+            }
+            log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
+            return r.text();
+        });
+    }
+
     document.getElementById('pbs-btn').onclick = function() {
         var timeStr = document.getElementById('pbs-time').value;
         var qty = parseInt(document.getElementById('pbs-qty').value) || 1;
@@ -167,7 +175,6 @@
         config.body = JSON.stringify([{ areaItemNo: pid, qty: qty }]);
         config.credentials = 'include';
 
-        // 用 serverOffset 修正 now
         var now = new Date(Date.now() + serverOffset);
         var target = new Date(now);
         var t = timeStr.split(':');
@@ -186,27 +193,24 @@
         }
 
         setTimeout(function() {
-            log('INFO', '發送購買請求...');
-            fetch(url, config)
-                .then(function(r){ 
-                    log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
-                    return r.text();
-                })
+            fireWithRetry(url, config, 5)  // 最多 5 次，間隔 300ms
                 .then(function(txt){
                     try {
                         var d = JSON.parse(txt);
-                        if(d.totalCartCount) {
+                        if(d && d.totalCartCount) {
                             log('SUCCESS', '🎉 加入購物車成功! 總數量: ' + d.totalCartCount);
                         } else {
-                            log('WARNING', '回應異常: ' + txt.slice(0, 50));
+                            log('WARNING', '回應異常: ' + (txt ? txt.slice(0, 80) : '空 response'));
                         }
-                    } catch(e) { log('ERROR', '解析失敗: ' + txt); }
+                    } catch(e) { 
+                        log('ERROR', '解析失敗: ' + txt); 
+                    }
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     btn.innerText = '🚀 Start';
                 })
                 .catch(function(e){
-                    log('ERROR', '網絡錯誤: ' + e);
+                    log('ERROR', '最終失敗: ' + e);
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     btn.innerText = '🚀 Start';
