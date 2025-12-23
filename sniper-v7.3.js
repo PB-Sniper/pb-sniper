@@ -2,7 +2,7 @@
     if(document.getElementById('pbs-main-panel')) return;
 
     var serverOffset = 0;
-    var lastPlannedFireTime = null; // 計劃發射 server time
+    var lastPlannedFireTime = null;
     var countdownTimer = null;
 
     // --- 1. LOG 面板 ---
@@ -207,7 +207,6 @@
         if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
         if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
-        // 修正好 regex：[\s\S]
         var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
         if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
 
@@ -251,6 +250,8 @@
                         log('SUCCESS', '🎉 加入購物車成功! 總數量: ' + parsed.totalCartCount);
                     } else if(parsed && parsed.additional && parsed.additional.productOutOfStock){
                         log('WARNING', '商品已售罄 (productOutOfStock=true)');
+                    } else if(parsed && parsed.error && parsed.error.indexOf('OutOfStock') !== -1){
+                        log('WARNING', '商品已售罄 (error=' + parsed.error + ')');
                     } else if(txt){
                         log('WARNING', '回應異常: ' + txt.slice(0, 120));
                     } else {
