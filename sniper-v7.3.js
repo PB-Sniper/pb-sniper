@@ -243,6 +243,8 @@
         setTimeout(function() {
             fireWithRetry(url, config, 5)
                 .then(function(txt){
+                    console.log('PB-Sniper RAW RESPONSE ===>', txt);
+
                     var parsed = null;
                     try { parsed = JSON.parse(txt); } catch(_) {}
 
