@@ -1,0 +1,216 @@
+(function(){
+    /* 防止重複執行 */
+    if(document.getElementById('pbs-main-panel')) return;
+
+    // 新增：Server 時間 offset
+    var serverOffset = 0;
+
+    /* --- 1. 建立 LOG 面板 --- */
+    var logPanel = document.createElement('div');
+    logPanel.id = 'pbs-log-panel';
+    logPanel.style.cssText = 'position:fixed;bottom:20px;left:20px;width:380px;height:240px;overflow-y:auto;background:rgba(0,0,0,0.9);color:#fff;font-family:Consolas,monospace;font-size:12px;padding:10px;border:1px solid #555;border-radius:6px;z-index:999999;white-space:pre-wrap;box-shadow:0 4px 10px rgba(0,0,0,0.5);display:none;';
+    document.body.appendChild(logPanel);
+
+    function log(type, msg) {
+        logPanel.style.display = 'block';
+        var line = document.createElement('div');
+        var color = '#fff';
+        if(type === 'SUCCESS') color = '#00ff88';
+        if(type === 'INFO') color = '#00d0ff';
+        if(type === 'WARNING') color = '#ffcc00';
+        if(type === 'ERROR') color = '#ff4444';
+        if(type === 'GUARD') color = '#00bfff'; /* Guardian 專用色 */
+
+        // 用 serverOffset 調整時間
+        var nowForLog = new Date(Date.now() + serverOffset);
+        var time = nowForLog.toLocaleTimeString('en-GB') + '.' + String(nowForLog.getMilliseconds()).padStart(3,'0');
+        line.style.color = color;
+        line.style.borderBottom = '1px solid #333';
+        line.style.padding = '2px 0';
+        line.innerText = '[' + time + '] [' + type + '] ' + msg;
+        logPanel.appendChild(line);
+        logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    /* --- 2. Session Guardian V3.0 (整合版) --- */
+    log('GUARD', 'Session Guardian V3.0 已啟動 (每4分鐘保活)');
+    setInterval(function() {
+        fetch(window.location.href, { method: 'HEAD' })
+            .then(function(r) {
+                if(r.ok) log('GUARD', '保活成功 (Session Active)');
+                else log('WARNING', '保活異常 Status: ' + r.status);
+            })
+            .catch(function(e) { log('ERROR', '保活網絡錯誤: ' + e); });
+    }, 240000); /* 4分鐘 */
+
+    /* --- 3. 建立 SNIPER 控制面板 --- */
+    var panel = document.createElement('div');
+    panel.id = 'pbs-main-panel';
+    panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
+    
+    panel.innerHTML = '\
+        <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
+            <span>🎯 P-Bandai Sniper V7.3 Sync</span>\
+            <span style="cursor:pointer;color:#999" onclick="document.getElementById(\'pbs-main-panel\').remove();document.getElementById(\'pbs-log-panel\').style.display=\'none\';">✕</span>\
+        </h3>\
+        <div style="margin-bottom:8px">\
+            <label style="display:block;color:#ccc;font-size:11px">⏰ Time (HH:MM:SS)</label>\
+            <input id="pbs-time" value="16:00:00" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
+        </div>\
+        <div style="display:flex;gap:10px;margin-bottom:8px">\
+            <div style="flex:1">\
+                <label style="display:block;color:#ccc;font-size:11px">🔢 Qty</label>\
+                <input id="pbs-qty" type="number" value="1" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
+            </div>\
+            <div style="flex:1">\
+                <label style="display:block;color:#ccc;font-size:11px">🕰️ Offset (ms)</label>\
+                <input id="pbs-offset" type="number" value="0" placeholder="+/-" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
+            </div>\
+        </div>\
+        <div style="margin-bottom:10px">\
+            <label style="display:block;color:#ccc;font-size:11px">📋 Paste Fetch</label>\
+            <textarea id="pbs-fetch" rows="3" style="width:100%;padding:5px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;resize:vertical;box-sizing:border-box;" placeholder="fetch(...)"></textarea>\
+        </div>\
+        <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">🚀 Start</button>\
+        <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
+    ';
+    document.body.appendChild(panel);
+
+    // 3.1 動態加 Sync 按鈕
+    (function(){
+        var timeInput = document.getElementById('pbs-time');
+        if (!timeInput) return;
+        var syncBtn = document.createElement('button');
+        syncBtn.id = 'pbs-sync';
+        syncBtn.textContent = '⏱ Sync';
+        syncBtn.style.marginTop = '5px';
+        syncBtn.style.padding = '4px 6px';
+        syncBtn.style.fontSize = '11px';
+        syncBtn.style.background = '#007bff';
+        syncBtn.style.color = '#fff';
+        syncBtn.style.border = 'none';
+        syncBtn.style.borderRadius = '4px';
+        syncBtn.style.cursor = 'pointer';
+        // 擺喺時間 input 下面
+        timeInput.parentNode.appendChild(syncBtn);
+
+        syncBtn.onclick = function () {
+            log('INFO', '開始對錶 (向伺服器取時間)...');
+            var t0 = Date.now();
+            fetch(window.location.href, { method: 'HEAD', cache: 'no-store' })
+                .then(function (r) {
+                    var t1 = Date.now();
+                    var dateHeader = r.headers.get('date');
+                    if (!dateHeader) {
+                        log('WARNING', '伺服器無 Date Header，用返本地時間');
+                        serverOffset = 0;
+                        return;
+                    }
+                    var serverTime = new Date(dateHeader).getTime();
+                    var latency = (t1 - t0) / 2;
+                    var adjustedServer = serverTime + latency;
+                    serverOffset = adjustedServer - t1;
+                    log('SUCCESS', '對錶完成，Server Offset: ' + serverOffset + 'ms');
+                })
+                .catch(function (e) {
+                    log('ERROR', '對錶失敗，用本地時間: ' + e);
+                    serverOffset = 0;
+                });
+        };
+    })();
+
+    /* --- 4. 自動抓取 Product ID --- */
+    var pid = null;
+    try {
+        var scripts = [...document.querySelectorAll('script')];
+        for (var i = 0; i < scripts.length; i++) {
+            if (scripts[i].textContent.includes('PRELOAD_DATA =')) {
+                var jsonMatch = scripts[i].textContent.match(/PRELOAD_DATA\s*=\s*({.*?})\s*$/m);
+                if (jsonMatch) {
+                    var data = JSON.parse(jsonMatch[1]);
+                    if(data.product && data.product.areaItemNos) {
+                        pid = data.product.areaItemNos[0];
+                        log('SUCCESS', '自動鎖定商品 ID: ' + pid);
+                        document.getElementById('pbs-status').innerHTML = 'Locked: ' + pid + ' <span style="color:#00bfff">🛡️Guardian ON</span>';
+                        document.getElementById('pbs-status').style.color = '#0f0';
+                    }
+                }
+                break;
+            }
+        }
+    } catch(e) {
+        log('ERROR', '解析 ID 失敗: ' + e.message);
+    }
+
+    if(!pid) log('WARNING', '未找到商品 ID，請確認在商品詳情頁');
+
+    /* --- 5. 綁定按鈕事件 --- */
+    document.getElementById('pbs-btn').onclick = function() {
+        var timeStr = document.getElementById('pbs-time').value;
+        var qty = parseInt(document.getElementById('pbs-qty').value) || 1;
+        var offset = parseInt(document.getElementById('pbs-offset').value) || 0;
+        var fetchCode = document.getElementById('pbs-fetch').value;
+        var btn = document.getElementById('pbs-btn');
+
+        if (!pid) { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
+        if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
+
+        var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
+        if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
+        
+        var url = match[2];
+        var configStr = match[3];
+        var config;
+        try { config = new Function('return ' + configStr)(); } 
+        catch(e) { log('ERROR', 'Fetch Config 解析失敗'); return; }
+
+        config.body = JSON.stringify([{ areaItemNo: pid, qty: qty }]);
+        config.credentials = 'include';
+
+        // 用 serverOffset 修正 now
+        var now = new Date(Date.now() + serverOffset);
+        var target = new Date(now);
+        var t = timeStr.split(':');
+        target.setHours(t[0], t[1], t[2], 0);
+        var delay = target.getTime() - now.getTime() + offset;
+
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.innerText = '⏳ 倒數中...';
+
+        if(delay < 0) {
+            log('WARNING', '時間已過，立即發射! (Delay: ' + delay + 'ms)');
+            delay = 0;
+        } else {
+            log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發送請求 (Offset: ' + offset + 'ms | ServerOffset: ' + serverOffset + 'ms)');
+        }
+
+        setTimeout(function() {
+            log('INFO', '發送購買請求...');
+            fetch(url, config)
+                .then(function(r){ 
+                    log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
+                    return r.text();
+                })
+                .then(function(txt){
+                    try {
+                        var d = JSON.parse(txt);
+                        if(d.totalCartCount) {
+                            log('SUCCESS', '🎉 加入購物車成功! 總數量: ' + d.totalCartCount);
+                        } else {
+                            log('WARNING', '回應異常: ' + txt.slice(0, 50));
+                        }
+                    } catch(e) { log('ERROR', '解析失敗: ' + txt); }
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.innerText = '🚀 Start';
+                })
+                .catch(function(e){
+                    log('ERROR', '網絡錯誤: ' + e);
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.innerText = '🚀 Start';
+                });
+        }, delay);
+    };
+})();
