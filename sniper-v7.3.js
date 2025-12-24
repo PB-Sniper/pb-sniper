@@ -4,7 +4,7 @@
     var serverOffset = 0;
     var lastPlannedFireTime = null;
     var countdownTimer = null;
-    var suspendedRetryEnabled = true; // UI toggle 用
+    var suspendedRetryEnabled = true;
 
     // --- 1. LOG 面板 ---
     var logPanel = document.createElement('div');
@@ -34,7 +34,7 @@
 
     // --- 2. Guardian ---
     log('GUARD', 'Session Guardian V3.0 已啟動 (每4分鐘保活)');
-    setInterval(function() {
+    var guardTimer = setInterval(function() {
         fetch(window.location.href, { method: 'HEAD' })
             .then(function(r) {
                 if(r.ok) log('GUARD', '保活成功 (Session Active)');
@@ -48,10 +48,11 @@
     panel.id = 'pbs-main-panel';
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
 
+    // 注意：这里的 ✕ 按钮去掉了 onclick="..."，改为用 JS 绑定
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
-            <span>P-Bandai Sniper V7.3.1</span>\
-            <span style="cursor:pointer;color:#999" onclick="document.getElementById(\\\'pbs-main-panel\\\').remove();document.getElementById(\\\'pbs-log-panel\\\').style.display=\\\'none\\\';">✕</span>\
+            <span>P-Bandai Sniper V7.3.2</span>\
+            <span id="pbs-close-btn" style="cursor:pointer;color:#999;font-weight:bold;padding:0 5px;">✕</span>\
         </h3>\
         <div style="margin-bottom:8px">\
             <label style="display:block;color:#ccc;font-size:11px">⏰ Time (HH:MM:SS)</label>\
@@ -78,11 +79,24 @@
             <label style="display:block;color:#ccc;font-size:11px">📋 Paste Fetch</label>\
             <textarea id="pbs-fetch" rows="3" style="width:100%;padding:5px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;resize:vertical;box-sizing:border-box;" placeholder="fetch(...)"></textarea>\
         </div>\
-        <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px">🚀 Start</button>\
+        <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;text-align:center;">🚀 Start</button>\
         <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
-        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.1</div>\
+        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.2 · by Industrial Revolution + Doro Army</div>\
     ';
     document.body.appendChild(panel);
+
+    // --- 綁定 Close 事件 (包括清理 Timer) ---
+    var closeBtn = document.getElementById('pbs-close-btn');
+    if(closeBtn) {
+        closeBtn.onclick = function() {
+            // 移除 Panel
+            if(panel) panel.remove();
+            if(logPanel) logPanel.style.display = 'none'; // 隱藏 Log，不一定移除，方便重開
+            // 清理 Guardian Timer，避免後台一直跑
+            if(guardTimer) clearInterval(guardTimer);
+            if(countdownTimer) clearInterval(countdownTimer);
+        };
+    }
 
     var timeInput   = document.getElementById('pbs-time');
     var qtyInput    = document.getElementById('pbs-qty');
