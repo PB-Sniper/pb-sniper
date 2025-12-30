@@ -1,20 +1,18 @@
 // ==============================================================================
-// PB-Sniper V7.3.4 (Cart Status Display)
-// Date: 2025-12-30
+// PB-Sniper V7.3.2 (Standard Manual Import)
 // Authors: Industrial Revolution + Doro Army
-// Logic: Import Fetch -> Override Qty -> Fire -> Analyze Cart Response
 // ==============================================================================
 
 (function() {
     'use strict';
 
-    // 0. Cleanup
+    // 0. 清理舊介面
     const oldUI = document.getElementById('pb-sniper-panel');
     if (oldUI) oldUI.remove();
     console.clear();
 
     // ==========================================
-    // 1. Core State
+    // 1. 基本設定
     // ==========================================
     function getPageItemID() {
         try {
@@ -48,17 +46,19 @@
     };
 
     // ==========================================
-    // 2. Parser
+    // 2. 解析 Import Code
     // ==========================================
     function parseImportedCode(codeStr) {
         try {
+            // 提取 Headers
             const headersMatch = codeStr.match(/"headers"\s*:\s*({[\s\S]*?})\s*,/);
-            if (!headersMatch) throw new Error("找不到 'headers'，請確保 Copy 完整代碼");
+            if (!headersMatch) throw new Error("找不到 Headers，請確保複製完整 Fetch Code");
             
             const headersObj = JSON.parse(headersMatch[1]);
             let bodyObj = [{ "areaItemNo": "", "qty": 1 }];
-            const bodyMatch = codeStr.match(/"body"\s*:\s*(['"`])([\s\S]*?)\1/);
             
+            // 嘗試提取 Body
+            const bodyMatch = codeStr.match(/"body"\s*:\s*(['"`])([\s\S]*?)\1/);
             if (bodyMatch) {
                 try {
                     let rawBody = bodyMatch[2].replace(/\\"/g, '"');
@@ -80,7 +80,7 @@
     }
 
     // ==========================================
-    // 3. Shooter (With Cart Analysis)
+    // 3. 發射核心
     // ==========================================
     function checkTimer() {
         if (window.PB_V7.state.status !== 'ARMED') return;
@@ -119,13 +119,15 @@
         const { headers, baseBody, url } = window.PB_V7.config;
 
         try {
-            // [Fix: Qty Override]
+            // 構建 Payload
             let payloadArr = JSON.parse(baseBody);
             if (!Array.isArray(payloadArr)) payloadArr = [payloadArr];
+            
+            // 替換 ID 和 數量
             payloadArr[0].areaItemNo = targetId;
             payloadArr[0].qty = parseInt(qty, 10);
 
-            logMsg(`發射 -> ID:${targetId} | Qty:${payloadArr[0].qty}`);
+            logMsg(`發射 -> ID:${targetId} | Qty:${qty}`);
 
             const res = await fetch(url, {
                 method: 'POST',
@@ -135,41 +137,13 @@
                 credentials: 'include'
             });
 
-            const json = await res.json().catch(()=>({}));
-
             if (res.ok) {
                 stopSniper();
                 playSound();
-                
-                // [Fix: Cart Status Analysis]
-                // 通常 Response JSON 會有 cart items list
-                let cartInfo = "入車成功!";
-                let totalItems = 0;
-                let targetQtyInCart = 0;
-
-                // 嘗試分析回傳的 JSON (不同地區 PB 結構可能略有不同，這裡做通用處理)
-                if (Array.isArray(json)) {
-                    // 如果直接回傳 cart array
-                    totalItems = json.length;
-                    const item = json.find(i => i.areaItemNo === targetId);
-                    if (item) targetQtyInCart = item.qty;
-                } else if (json.cartItems && Array.isArray(json.cartItems)) {
-                     // 如果是 object wrapper
-                    totalItems = json.cartItems.length;
-                    const item = json.cartItems.find(i => i.areaItemNo === targetId);
-                    if (item) targetQtyInCart = item.qty;
-                }
-
-                if (totalItems > 0) {
-                    cartInfo = `成功! 車內總數: ${totalItems} 件 (本品: ${targetQtyInCart} 隻)`;
-                }
-
-                updateMainStatus("🎉 " + cartInfo, "#ffff00");
-                logMsg("SUCCESS: " + cartInfo);
-                alert("🎉 恭喜! " + cartInfo + "\n請立即結帳!");
-
+                updateMainStatus("🎉 成功入車!", "#ffff00");
+                alert("🎉 恭喜! 搶購成功! 請立即結帳!");
             } else {
-                // Fail
+                const json = await res.json().catch(()=>({}));
                 const errMsg = json.message || res.statusText;
                 logMsg(`Fail: ${res.status} ${errMsg}`);
             }
@@ -178,6 +152,7 @@
             logMsg(`Error: ${err.message}`);
         }
 
+        // 循環間隔 (1-1.5秒)
         if (window.PB_V7.state.status === 'FIRING') {
             const delay = 1000 + Math.random() * 500;
             window.PB_V7.state.loopId = setTimeout(fireLoop, delay);
@@ -234,7 +209,7 @@
     }
 
     // ==========================================
-    // 4. UI Construction
+    // 4. UI 介面
     // ==========================================
     const panel = document.createElement('div');
     panel.id = 'pb-sniper-panel';
@@ -248,7 +223,7 @@
 
     panel.innerHTML = `
         <div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:5px;">
-            <strong style="font-size:14px;">🔫 PB-Sniper V7.3.4</strong>
+            <strong style="font-size:14px;">🔫 PB-Sniper V7.3.2</strong>
             <span id="pb-config-status" style="color:#e74c3c;">❌ No Config</span>
         </div>
 
@@ -282,7 +257,7 @@
         </button>
 
         <div id="pb-log" style="height:100px; overflow-y:auto; margin-top:10px; background:#000; padding:5px; border:1px solid #333; color:#aaa; font-size:11px;">
-            <div>[System] V7.3.4 Loaded.</div>
+            <div>[System] V7.3.2 Loaded.</div>
         </div>
         
         <div style="margin-top:8px; border-top:1px solid #333; padding-top:5px; display:flex; justify-content:space-between; font-size:10px; color:#555;">
@@ -319,7 +294,6 @@
     function logMsg(m) { const b = document.getElementById('pb-log'); const t = new Date().toLocaleTimeString().split(' ')[0]; b.innerHTML = `<div><span style="color:#555;">[${t}]</span> ${m}</div>` + b.innerHTML; }
     function playSound() { new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(()=>{}); }
 
-    console.log('%c 🔫 PB-Sniper V7.3.4 Ready', 'color: #0f0; font-size: 14px');
+    console.log('%c 🔫 PB-Sniper V7.3.2 Ready', 'color: #0f0; font-size: 14px');
 
 })();
-
