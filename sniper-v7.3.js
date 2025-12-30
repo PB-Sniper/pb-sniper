@@ -48,7 +48,7 @@
     panel.id = 'pbs-main-panel';
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
 
-    // 注意：这里的 ✕ 按钮去掉了 onclick="..."，改为用 JS 绑定，修復 CSP 問題
+    // 注意：这里的 ✕ 按钮去掉了 onclick="..."，改为用 JS 绑定
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
             <span>P-Bandai Sniper V7.3.2</span>\
@@ -89,8 +89,10 @@
     var closeBtn = document.getElementById('pbs-close-btn');
     if(closeBtn) {
         closeBtn.onclick = function() {
+            // 移除 Panel
             if(panel) panel.remove();
-            if(logPanel) logPanel.style.display = 'none';
+            if(logPanel) logPanel.style.display = 'none'; // 隱藏 Log，不一定移除，方便重開
+            // 清理 Guardian Timer，避免後台一直跑
             if(guardTimer) clearInterval(guardTimer);
             if(countdownTimer) clearInterval(countdownTimer);
         };
@@ -195,21 +197,22 @@
         }, 100);
     }
 
-    // --- Retry 發射 ---
+    // --- Retry 發射 + latency + SuspendedItem retry（可關） ---
     function fireWithRetry(url, config, max5xxRetries, attempt5xx, suspendedRetriesLeft) {
         attempt5xx = attempt5xx || 1;
         if (suspendedRetriesLeft == null) suspendedRetriesLeft = 3;
 
-        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SusLeft ' + suspendedRetriesLeft + ')');
+        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SuspendedLeft ' + suspendedRetriesLeft + ', SusRetry ' + (suspendedRetryEnabled?'ON':'OFF') + ')');
 
         var sendTime = Date.now() + serverOffset;
 
         return fetch(url, config).then(function(r){
             var receiveTime = Date.now() + serverOffset;
             var latency = receiveTime - sendTime;
-            
-            // 簡化 Log，移除過多 timestamp
-            log('INFO', 'Response: ' + r.status + ' (latency: ' + latency + 'ms)');
+
+            var fireDate = new Date(sendTime);
+            var fireStr = fireDate.toTimeString().split(' ')[0] + '.' + String(fireDate.getMilliseconds()).padStart(3,'0');
+            log('INFO', '實際發射 ServerTime: ' + fireStr + ' (latency: ' + latency + 'ms)');
 
             return r.text().then(function(txt){
                 var parsed = null;
@@ -233,7 +236,7 @@
                     parsed.error.indexOf('CouldNotAddToCartBySuspendedItem') !== -1 &&
                     suspendedRetriesLeft > 0
                 ){
-                    log('WARNING', '商品狀態 Suspended，嘗試再補射 (剩 ' + (suspendedRetriesLeft-1) + ' 次)...');
+                    log('WARNING', '商品狀態 Suspended，嘗試再補射一次 (剩餘 ' + (suspendedRetriesLeft-1) + ' 次)...');
                     return new Promise(function(res){
                         setTimeout(res, 350);
                     }).then(function(){
@@ -241,7 +244,7 @@
                     });
                 }
 
-                log(r.ok ? 'SUCCESS' : 'ERROR', 'HTTP Status: ' + r.status);
+                log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
                 return txt;
             });
         });
@@ -257,7 +260,7 @@
         if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
         if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
-        var match = fetchCode.match(/fetch\\\((["'])(.*?)\1,\s*({[\s\S]*})\\\)/);
+        var match = fetchCode.match(/fetch\\((["'])(.*?)\1,\s*({[\s\S]*})\\)/);
         if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
 
         var url = match[2];
@@ -285,7 +288,7 @@
             log('WARNING', '時間已過，立即發射! (Delay: ' + delay + 'ms)');
             delay = 0;
         } else {
-            log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發射');
+            log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發送請求 (Offset: ' + offset + 'ms | ServerOffset: ' + serverOffset + 'ms)');
         }
 
         startCountdown(lastPlannedFireTime);
@@ -293,21 +296,21 @@
         setTimeout(function() {
             fireWithRetry(url, config, 5)
                 .then(function(txt){
+                    console.log('PB-Sniper RAW RESPONSE ===>', txt);
+
                     var parsed = null;
                     try { parsed = JSON.parse(txt); } catch(_) {}
 
-                    // --- 關鍵修正區：顯示邏輯 ---
                     if(parsed && parsed.totalCartCount){
-                        // 修正：顯示實際下單數量 (qty) 以及 購物車總數 (Cart Total)
-                        log('SUCCESS', 'Successfully ordered ' + qty + ' pcs. (Cart Total: ' + parsed.totalCartCount + ')');
+                        log('SUCCESS', '🎉 加入購物車成功! 總數量: ' + parsed.totalCartCount);
                     } else if(parsed && parsed.additional && parsed.additional.productOutOfStock){
-                        log('WARNING', '商品已售罄 (productOutOfStock)');
+                        log('WARNING', '商品已售罄 (productOutOfStock=true)');
                     } else if(parsed && parsed.error && parsed.error.indexOf('OutOfStock') !== -1){
-                        log('WARNING', '商品已售罄 (OutOfStock)');
+                        log('WARNING', '商品已售罄 (error=' + parsed.error + ')');
                     } else if(parsed && parsed.error && parsed.error.indexOf('SuspendedItem') !== -1){
-                        log('WARNING', '商品狀態仍為 Suspended');
+                        log('WARNING', '商品狀態仍為 Suspended (error=' + parsed.error + ')');
                     } else if(txt){
-                        log('WARNING', '回應異常');
+                        log('WARNING', '回應異常: ' + txt.slice(0, 120));
                     } else {
                         log('WARNING', '回應為空');
                     }
