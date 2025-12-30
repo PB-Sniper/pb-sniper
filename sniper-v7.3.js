@@ -260,7 +260,7 @@
         if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
         if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
-        var match = fetchCode.match(/fetch\\((["'])(.*?)\1,\s*({[\s\S]*})\\)/);
+        var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
         if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
 
         var url = match[2];
