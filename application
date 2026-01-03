@@ -48,10 +48,9 @@
     panel.id = 'pbs-main-panel';
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
 
-    // 注意：这里的 ✕ 按钮去掉了 onclick="..."，改为用 JS 绑定
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
-            <span>P-Bandai Sniper V7.3.2</span>\
+            <span>P-Bandai Sniper V7.3.3</span>\
             <span id="pbs-close-btn" style="cursor:pointer;color:#999;font-weight:bold;padding:0 5px;">✕</span>\
         </h3>\
         <div style="margin-bottom:8px">\
@@ -81,18 +80,15 @@
         </div>\
         <button id="pbs-btn" style="width:100%;padding:10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;text-align:center;">🚀 Start</button>\
         <div id="pbs-status" style="margin-top:5px;text-align:center;color:#aaa;font-size:11px">Ready. <span style="color:#00bfff">🛡️Guardian ON</span></div>\
-        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.2 · by Industrial Revolution + Doro Army</div>\
+        <div style="margin-top:3px;text-align:right;font-size:10px;color:#666;">v7.3.3 · by Industrial Revolution + Doro Army</div>\
     ';
     document.body.appendChild(panel);
 
-    // --- 綁定 Close 事件 (包括清理 Timer) ---
     var closeBtn = document.getElementById('pbs-close-btn');
     if(closeBtn) {
         closeBtn.onclick = function() {
-            // 移除 Panel
             if(panel) panel.remove();
-            if(logPanel) logPanel.style.display = 'none'; // 隱藏 Log，不一定移除，方便重開
-            // 清理 Guardian Timer，避免後台一直跑
+            if(logPanel) logPanel.style.display = 'none';
             if(guardTimer) clearInterval(guardTimer);
             if(countdownTimer) clearInterval(countdownTimer);
         };
@@ -114,7 +110,6 @@
         };
     }
 
-    // --- Sync 按鈕 ---
     (function(){
         if (!timeInput) return;
         var syncBtn = document.createElement('button');
@@ -131,7 +126,7 @@
         timeInput.parentNode.appendChild(syncBtn);
 
         syncBtn.onclick = function () {
-            log('INFO', '開始對錶 (向伺服器取時間)...');
+            log('INFO', '開始對錶...');
             var t0 = Date.now();
             fetch(window.location.href, { method: 'HEAD', cache: 'no-store' })
                 .then(function (r) {
@@ -149,13 +144,12 @@
                     log('SUCCESS', '對錶完成，Server Offset: ' + serverOffset + 'ms');
                 })
                 .catch(function (e) {
-                    log('ERROR', '對錶失敗，用本地時間: ' + e);
+                    log('ERROR', '對錶失敗: ' + e);
                     serverOffset = 0;
                 });
         };
     })();
 
-    // --- 自動抓 Product ID ---
     var pid = null;
     try {
         var scripts = [].slice.call(document.querySelectorAll('script'));
@@ -180,7 +174,6 @@
 
     if(!pid) log('WARNING', '未找到商品 ID，請確認在商品詳情頁');
 
-    // --- 倒數計時顯示 ---
     function startCountdown(targetTimeMs) {
         if (countdownTimer) clearInterval(countdownTimer);
         countdownTimer = setInterval(function(){
@@ -197,28 +190,24 @@
         }, 100);
     }
 
-    // --- Retry 發射 + latency + SuspendedItem retry（可關） ---
     function fireWithRetry(url, config, max5xxRetries, attempt5xx, suspendedRetriesLeft) {
         attempt5xx = attempt5xx || 1;
         if (suspendedRetriesLeft == null) suspendedRetriesLeft = 3;
 
-        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SuspendedLeft ' + suspendedRetriesLeft + ', SusRetry ' + (suspendedRetryEnabled?'ON':'OFF') + ')');
+        log('INFO', '發送購買請求... (Attempt ' + attempt5xx + '/' + max5xxRetries + ', SusLeft ' + suspendedRetriesLeft + ')');
 
         var sendTime = Date.now() + serverOffset;
 
         return fetch(url, config).then(function(r){
             var receiveTime = Date.now() + serverOffset;
             var latency = receiveTime - sendTime;
-
-            var fireDate = new Date(sendTime);
-            var fireStr = fireDate.toTimeString().split(' ')[0] + '.' + String(fireDate.getMilliseconds()).padStart(3,'0');
-            log('INFO', '實際發射 ServerTime: ' + fireStr + ' (latency: ' + latency + 'ms)');
+            
+            log('INFO', 'Response: ' + r.status + ' (latency: ' + latency + 'ms)');
 
             return r.text().then(function(txt){
                 var parsed = null;
                 try { parsed = JSON.parse(txt); } catch(_) {}
 
-                // 5xx → 固定 retry
                 if(r.status >= 500 && !r.ok && attempt5xx < max5xxRetries){
                     log('WARNING', '伺服器 5xx ('+r.status+')，準備重試...');
                     return new Promise(function(res){
@@ -228,7 +217,6 @@
                     });
                 }
 
-                // 400 + SuspendedItem → 視乎 toggle 再補射
                 if(
                     suspendedRetryEnabled &&
                     r.status === 400 &&
@@ -236,7 +224,7 @@
                     parsed.error.indexOf('CouldNotAddToCartBySuspendedItem') !== -1 &&
                     suspendedRetriesLeft > 0
                 ){
-                    log('WARNING', '商品狀態 Suspended，嘗試再補射一次 (剩餘 ' + (suspendedRetriesLeft-1) + ' 次)...');
+                    log('WARNING', '商品狀態 Suspended，嘗試再補射 (剩 ' + (suspendedRetriesLeft-1) + ' 次)...');
                     return new Promise(function(res){
                         setTimeout(res, 350);
                     }).then(function(){
@@ -244,13 +232,12 @@
                     });
                 }
 
-                log(r.ok ? 'SUCCESS' : 'ERROR', '伺服器回應: ' + r.status);
+                log(r.ok ? 'SUCCESS' : 'ERROR', 'HTTP Status: ' + r.status);
                 return txt;
             });
         });
     }
 
-    // --- Start 按鈕 ---
     btn.onclick = function() {
         var timeStr   = timeInput.value;
         var qty       = parseInt(qtyInput.value)    || 1;
@@ -260,8 +247,34 @@
         if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
         if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
+        // --- 修正重點：使用雙反斜線 \\( 來匹配括號 ---
         var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
-        if (!match) { log('ERROR', 'Fetch 格式錯誤'); return; }
+        
+        // 萬一正則還是失敗，我們嘗試做最後的容錯：手動尋找括號位置
+        if (!match) {
+            try {
+                // 手動解析法：不依賴 Regex
+                let startUrl = fetchCode.indexOf('fetch(');
+                if(startUrl === -1) throw new Error('no fetch');
+                let firstQuote = fetchCode.indexOf("'", startUrl);
+                let doubleQuote = fetchCode.indexOf('"', startUrl);
+                let quote = (firstQuote !== -1 && (doubleQuote === -1 || firstQuote < doubleQuote)) ? "'" : '"';
+                
+                let startUrlContent = fetchCode.indexOf(quote, startUrl) + 1;
+                let endUrlContent = fetchCode.indexOf(quote, startUrlContent);
+                let url = fetchCode.substring(startUrlContent, endUrlContent);
+                
+                let startObj = fetchCode.indexOf('{', endUrlContent);
+                let endObj = fetchCode.lastIndexOf('}');
+                let configStr = fetchCode.substring(startObj, endObj + 1);
+                
+                match = [null, quote, url, configStr]; // 偽造一個 match array
+                log('INFO', 'Regex失敗，切換至手動解析模式成功');
+            } catch(e) {
+                log('ERROR', 'Fetch 格式錯誤 (Regex & Manual failed)'); 
+                return;
+            }
+        }
 
         var url = match[2];
         var configStr = match[3];
@@ -288,7 +301,7 @@
             log('WARNING', '時間已過，立即發射! (Delay: ' + delay + 'ms)');
             delay = 0;
         } else {
-            log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發送請求 (Offset: ' + offset + 'ms | ServerOffset: ' + serverOffset + 'ms)');
+            log('INFO', '將於 ' + (delay/1000).toFixed(3) + ' 秒後發射');
         }
 
         startCountdown(lastPlannedFireTime);
@@ -296,21 +309,19 @@
         setTimeout(function() {
             fireWithRetry(url, config, 5)
                 .then(function(txt){
-                    console.log('PB-Sniper RAW RESPONSE ===>', txt);
-
                     var parsed = null;
                     try { parsed = JSON.parse(txt); } catch(_) {}
 
                     if(parsed && parsed.totalCartCount){
-                        log('SUCCESS', '🎉 加入購物車成功! 總數量: ' + parsed.totalCartCount);
+                        log('SUCCESS', '🎉 成功加入購物車 (數量: ' + qty + ') | 購物車總數: ' + parsed.totalCartCount);
                     } else if(parsed && parsed.additional && parsed.additional.productOutOfStock){
-                        log('WARNING', '商品已售罄 (productOutOfStock=true)');
+                        log('WARNING', '商品已售罄 (productOutOfStock)');
                     } else if(parsed && parsed.error && parsed.error.indexOf('OutOfStock') !== -1){
-                        log('WARNING', '商品已售罄 (error=' + parsed.error + ')');
+                        log('WARNING', '商品已售罄 (OutOfStock)');
                     } else if(parsed && parsed.error && parsed.error.indexOf('SuspendedItem') !== -1){
-                        log('WARNING', '商品狀態仍為 Suspended (error=' + parsed.error + ')');
+                        log('WARNING', '商品狀態仍為 Suspended');
                     } else if(txt){
-                        log('WARNING', '回應異常: ' + txt.slice(0, 120));
+                        log('WARNING', '回應異常: ' + txt.slice(0, 100));
                     } else {
                         log('WARNING', '回應為空');
                     }
