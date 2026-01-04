@@ -48,6 +48,7 @@
     panel.id = 'pbs-main-panel';
     panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:320px;background:rgba(20,20,20,0.95);color:#fff;z-index:999999;padding:15px;border-radius:8px;font-size:13px;border:1px solid #444;box-shadow:0 4px 15px rgba(0,0,0,0.5);font-family:sans-serif;';
 
+    // Update Default Time to 15:00:00
     panel.innerHTML = '\
         <h3 style="color:#fc0;margin:0 0 10px;border-bottom:1px solid #555;padding-bottom:5px;font-size:16px;font-weight:bold;display:flex;justify-content:space-between;">\
             <span>P-Bandai Sniper V7.3.3</span>\
@@ -55,7 +56,7 @@
         </h3>\
         <div style="margin-bottom:8px">\
             <label style="display:block;color:#ccc;font-size:11px">⏰ Time (HH:MM:SS)</label>\
-            <input id="pbs-time" value="16:00:00" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
+            <input id="pbs-time" value="15:00:00" style="width:100%;padding:5px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;box-sizing:border-box;">\
         </div>\
         <div id="pbs-countdown" style="margin-bottom:4px;text-align:center;font-size:16px;color:#0fd;">--.-- s</div>\
         <div style="display:flex;gap:10px;margin-bottom:8px">\
@@ -247,13 +248,9 @@
         if (!pid)       { log('ERROR', '無法啟動: 缺少商品 ID'); return; }
         if (!fetchCode) { log('ERROR', '無法啟動: 請貼上 Fetch 代碼'); return; }
 
-        // --- 修正重點：使用雙反斜線 \\( 來匹配括號 ---
         var match = fetchCode.match(/fetch\((["'])(.*?)\1,\s*({[\s\S]*})\)/);
-        
-        // 萬一正則還是失敗，我們嘗試做最後的容錯：手動尋找括號位置
         if (!match) {
             try {
-                // 手動解析法：不依賴 Regex
                 let startUrl = fetchCode.indexOf('fetch(');
                 if(startUrl === -1) throw new Error('no fetch');
                 let firstQuote = fetchCode.indexOf("'", startUrl);
@@ -268,7 +265,7 @@
                 let endObj = fetchCode.lastIndexOf('}');
                 let configStr = fetchCode.substring(startObj, endObj + 1);
                 
-                match = [null, quote, url, configStr]; // 偽造一個 match array
+                match = [null, quote, url, configStr];
                 log('INFO', 'Regex失敗，切換至手動解析模式成功');
             } catch(e) {
                 log('ERROR', 'Fetch 格式錯誤 (Regex & Manual failed)'); 
